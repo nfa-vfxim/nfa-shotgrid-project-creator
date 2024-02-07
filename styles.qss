@@ -1,0 +1,52 @@
+
+QWidget{
+    background-color: #444444;
+}
+
+QLabel {
+    color: white;
+    font-size: 12pt;
+}
+
+QLineEdit{
+    color: white;
+    background-color: #2A2A2A;
+    border: 6px solid #2A2A2A;
+    border-radius: 6px;
+}
+
+QPushButton {
+    color: white;
+    background-color: #5B5B5B;
+    font-size: 10pt;
+    border: 6px solid #5B5B5B;
+    border-radius: 6px;
+}
+
+QPushButton:pressed {
+    background-color: #2A2A2A;
+    border: 6px solid #2A2A2A;
+    border-radius: 6px;
+}
+
+QPushButton:checked {
+    background-color: #2A2A2A;
+    border: 6px solid #2A2A2A;
+    border-radius: 6px;
+}
+
+QComboBox{
+    color: white;
+    background-color: #2A2A2A;
+    border: 6px solid #2A2A2A;
+    border-radius: 6px;
+}
+
+QAbstractItemView { color: white; }
+
+QSpinBox{
+    color: white;
+    background-color: #2A2A2A;
+    border: 6px solid #2A2A2A;
+    border-radius: 6px;
+}
