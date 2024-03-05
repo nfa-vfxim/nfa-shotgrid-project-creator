@@ -6,7 +6,9 @@ import datetime
 import os
 import re
 from dataclasses import dataclass
+from typing import Callable
 
+from PySide2 import QtCore
 from shotgun_api3 import shotgun
 
 
@@ -35,58 +37,80 @@ class UserInformation:
     student_graduation_year: int
 
 
+class ValidationError(Exception):
+    """Custom exception that gets raised when validation fails."""
+
+
 class ProjectCreatorModel:
     """Model for the ShotGrid Project Creator.
 
-    This model handles all validation and ShotGrid inferfacing."""
+    This model handles all validation and ShotGrid interfacing."""
 
     def __init__(self) -> None:
         """Initializes this class and stores the project dataclass."""
         self.project_information = ProjectInformation(
-            "", "", True, "", False, [], "All", "Fiction", 25
+            username="",
+            project_name="",
+            has_production_code=True,
+            project_code="",
+            has_other_supervisors=False,
+            supervisor_list=[],
+            render_engine="All",
+            project_type="Fiction",
+            project_fps=25,
         )
 
-    def connect_to_shotgrid(self) -> (bool, str):
-        """Connects to ShotGrid database. Returns information based on
-        whether or not connection was successful.
+    def connect_to_shotgrid(
+        self,
+        connection_successful_function: Callable,
+        connection_failed_function: Callable,
+    ) -> None:
+        """Connects to ShotGrid database on a separate thread.
 
-
-        Returns:
-            Bool: Whether or not connection was successful.
-            Str: Error message if connecting was not successful.
+        Args:
+            connection_successful_function: Function that gets called when connection is successful.
+            connection_failed_function: Function that gets called when connection failed.
         """
-        try:
-            self.shotgrid_connection = shotgun.Shotgun(
-                "https://nfa.shotgunstudio.com",
-                script_name="project_creation_V2",
-                api_key=os.environ["SHOTGRID_API_KEY"],
-            )
+        self.shotgrid_connection_thread = ShotGridConnectionThread(self)
 
-            users = self.shotgrid_connection.find("HumanUser", [], ["name"])
-            self.usernames = [user["name"] for user in users]
+        self.shotgrid_connection_thread.shotgrid_connection_successful.connect(
+            connection_successful_function
+        )
+        self.shotgrid_connection_thread.shotgrid_connection_failed.connect(
+            connection_failed_function
+        )
 
-            projects = self.shotgrid_connection.find("Project", [], ["name"])
-            self.projects = [project["name"] for project in projects]
+        self.shotgrid_connection_thread.start()
 
-            project_codes = self.shotgrid_connection.find(
-                "Project", [], ["sg_projectcode"]
-            )
-            self.project_codes = [
-                project_code["sg_projectcode"]
-                for project_code in project_codes
-            ]
+    def create_shotgrid_connection(self) -> None:
+        """Starts our ShotGrid connection and retrieves useful information to
+        speed up the program.
+        """
+        self.shotgrid_connection = shotgun.Shotgun(
+            "https://nfa.shotgunstudio.com",
+            script_name="project_creation_V2",
+            api_key=os.environ["SHOTGRID_API_KEY"],
+        )
 
-            return True, ""
+        users = self.shotgrid_connection.find("HumanUser", [], ["name"])
+        self.usernames = [user["name"] for user in users]
 
-        except Exception as error:
-            return False, str(error)
+        projects = self.shotgrid_connection.find("Project", [], ["name"])
+        self.projects = [project["name"] for project in projects]
+
+        project_codes = self.shotgrid_connection.find(
+            "Project", [], ["sg_projectcode"]
+        )
+        self.project_codes = [
+            project_code["sg_projectcode"] for project_code in project_codes
+        ]
 
     def get_shotgrid_user_from_computer_username(self) -> bool:
         """Checks if the username of the computer matches an account name
         in the ShotGrid database. At school this is usually the case.
 
         Returns:
-            bool: Whether or not usernames match.
+            Whether or not usernames match.
         """
         username = os.getlogin()
         return self.get_shotgrid_user(username)
@@ -99,7 +123,7 @@ class ProjectCreatorModel:
             username: ShotGrid user name or login
 
         Returns:
-            dict: ShotGrid user object with needed info fields.
+            ShotGrid user object with needed info fields.
         """
         fields_to_retrieve = [
             "id",
@@ -156,7 +180,7 @@ class ProjectCreatorModel:
             shotgrid_user: ShotGrid user to get graduation year for
 
         Returns:
-            int: Year in which student graduates.
+            Year in which student graduates.
         """
         graduation_year_string = shotgrid_user.get("sg_lichting")
         return int(graduation_year_string[1:])
@@ -170,7 +194,7 @@ class ProjectCreatorModel:
             graduation_year: The year in which the student will graduate.
 
         Returns:
-            int: The schoolyear the student is currently in.
+            The schoolyear the student is currently in.
         """
         current_time = datetime.datetime.now()
         corrected_time = current_time + datetime.timedelta(days=120)
@@ -184,23 +208,17 @@ class ProjectCreatorModel:
 
         return student_year
 
-    def validate_project_name(self, project_name: str) -> (bool, str):
+    def validate_project_name(self, project_name: str) -> None:
         """Validates the project name.
 
         Args:
             project_name: The string name for the project.
-
-        Returns:
-            Bool: Whether or not validation is successful.
-            Str: Validation message for display in UI.
         """
         self.project_information.project_name = project_name
 
         if not project_name:
-            return (
-                False,
-                "You must fill in a project name.",
-            )
+            validation_message = "You must fill in a project name"
+            raise ValidationError(validation_message)
 
         legal_characters = "^[a-z_]*$"
         contains_only_legal_characters = re.match(
@@ -208,28 +226,20 @@ class ProjectCreatorModel:
         )
 
         if not contains_only_legal_characters:
-            return (
-                False,
-                "Project name may only use lowercase a-z and underscores.",
+            validation_message = (
+                "Project name may only use lowercase a-z and underscores."
             )
+            raise ValidationError(validation_message)
 
         if project_name in self.projects:
-            return (
-                False,
-                "Project name already taken.",
-            )
+            validation_message = "Project name already taken."
+            raise ValidationError(validation_message)
 
-        return True, "Project name available!"
-
-    def validate_project_code(self, project_code: str) -> (bool, str):
+    def validate_project_code(self, project_code: str) -> None:
         """Validates the project code.
 
         Args:
             project_code: The string project code.
-
-        Returns:
-            Bool: Whether or not validation is successful.
-            Str: Validation message for display in UI.
         """
         self.project_information.project_code = project_code.lower()
 
@@ -251,21 +261,15 @@ class ProjectCreatorModel:
         )
 
         if not contains_only_legal_characters:
-            return False, legal_character_warning
+            raise ValidationError(legal_character_warning)
 
         if len(project_code) != code_length:
-            return (
-                False,
-                f"Project code uses {'more' if len(project_code) > code_length else 'less'} characters than allowed.",
-            )
+            validation_message = f"Project code uses {'more' if len(project_code) > code_length else 'less'} characters than allowed."
+            raise ValidationError(validation_message)
 
         if project_code.lower() in self.project_codes:
-            return (
-                False,
-                "Project code already taken.",
-            )
-
-        return True, "Project code available!"
+            validation_message = "Project code already taken."
+            raise ValidationError(validation_message)
 
     def set_has_production_code(self, has_code: bool) -> None:
         """Sets production code bool on the dataclass.
@@ -275,49 +279,35 @@ class ProjectCreatorModel:
         """
         self.project_information.has_production_code = has_code
 
-    def add_supervisor(self, supervisor_name: str) -> (bool, str, str):
+    def add_supervisor(self, supervisor_name: str) -> str:
         """Validates the name of a supervisor and adds it to the dataclass.
 
         Args:
             supervisor_name: The username of the supervisor to add.
 
         Returns:
-            Bool: Whether or not validation is successful.
-            Str: Username after validation
-            Str: Validation message for display in UI.
+            Username after validation.
         """
         supervisor_user_object = self.get_shotgrid_user(supervisor_name)
 
         if not supervisor_user_object:
-            return (
-                False,
-                None,
-                "Could not find supervisor name in ShotGrid database.",
+            validation_message = (
+                "Could not find supervisor name in ShotGrid database."
             )
+            raise ValidationError(validation_message)
 
         if supervisor_user_object in self.project_information.supervisor_list:
-            return (
-                False,
-                None,
-                "This supervisor has already been added.",
-            )
+            validation_message = "This supervisor has already been added."
+            raise ValidationError(validation_message)
 
         self.project_information.supervisor_list.append(supervisor_user_object)
-        return (
-            True,
-            supervisor_user_object.get("name"),
-            "Added supervisor to list!",
-        )
+        return supervisor_user_object.get("name")
 
-    def remove_supervisor(self, supervisor_name: str) -> (bool, str):
+    def remove_supervisor(self, supervisor_name: str) -> None:
         """Removes the given supervisor from the dataclass.
 
         Args:
             supervisor_name: Username of supervisor to remove
-
-        Returns:
-            Bool: Whether or not removal is successful.
-            Str: Validation message for display in UI.
         """
         supervisor_user_object = self.get_shotgrid_user(supervisor_name)
 
@@ -325,10 +315,12 @@ class ProjectCreatorModel:
             supervisor_user_object
             not in self.project_information.supervisor_list
         ):
-            return False, "Can't remove because supervisor isn't on the list."
+            validation_message = (
+                "Can't remove because supervisor isn't on the list."
+            )
+            raise ValidationError(validation_message)
 
         self.project_information.supervisor_list.remove(supervisor_user_object)
-        return True, "Removed supervisor from list!"
 
     def set_render_engine(self, render_engine: str) -> None:
         """Sets the render engine on the dataclass.
@@ -354,32 +346,16 @@ class ProjectCreatorModel:
         """
         self.project_information.project_fps = fps
 
-    def validate_project(self) -> (bool, str):
-        """Runs through all validation again and then creates the ShotGrid project.
+    def validate_project(self):
+        """Runs through all validation again."""
 
-        Returns:
-            Bool: Whether or not project creation was successful.
-            Str: Validation message for display in UI.
-        """
+        self.validate_project_name(self.project_information.project_name)
 
-        project_name_validated, project_name_error = (
-            self.validate_project_name(self.project_information.project_name)
-        )
-
-        if not project_name_validated:
-            return False, project_name_error
-
-        project_code_validated, project_code_error = (
-            self.validate_project_code(self.project_information.project_code)
-        )
-
-        if not project_code_validated:
-            return False, project_code_error
+        self.validate_project_code(self.project_information.project_code)
 
         if not self.project_information.supervisor_list:
-            return False, "You haven't yet added any supervisors."
-
-        return True, "Validation passed!"
+            validation_message = "You haven't yet added any supervisors."
+            raise ValidationError(validation_message)
 
     def get_formatted_supervisors_list(
         self, supervisors_list: list
@@ -391,7 +367,7 @@ class ProjectCreatorModel:
             supervisors_list: List of supervisor usernames.
 
         Returns:
-            list[dict]: List of dicts with supervisor ID and type.
+            List of dicts with supervisor ID and type.
         """
         formatted_supervisors_list = []
         for supervisor in supervisors_list:
@@ -431,53 +407,105 @@ class ProjectCreatorModel:
                 new_permission_configuration,
             )
 
-    def create_project(self) -> (bool, str):
+    def start_project_creation(
+        self,
+        creation_successful_function: Callable,
+        creation_failed_function: Callable,
+    ) -> None:
+        """Starts the project creation on a separate thread.
+
+        Args:
+            creation_successful_function: Function that gets called when creation is successful.
+            creation_failed_function: Function that gets called when creation failed.
+        """
+        self.project_creation_thread = ProjectCreationThread(self)
+
+        self.project_creation_thread.project_creation_successful.connect(
+            creation_successful_function
+        )
+        self.project_creation_thread.project_creation_failed.connect(
+            creation_failed_function
+        )
+
+        self.project_creation_thread.start()
+
+    def create_project(self) -> str:
         """Creates the ShotGrid project and adds the pipeline configuration.
 
         Returns:
-            bool: Whether or not creation was successful.
-            str: Link to project page or error text.
+            Link to project page.
         """
+        formatted_supervisors_list = self.get_formatted_supervisors_list(
+            self.project_information.supervisor_list
+        )
+
+        project_data = {
+            "name": self.project_information.project_name,
+            "tank_name": self.project_information.project_name,
+            "sg_projectcode": self.project_information.project_code,
+            "users": formatted_supervisors_list,
+            "sg_supervisors": formatted_supervisors_list,
+            "sg_render_engine": self.project_information.render_engine,
+            "sg_type": self.project_information.project_type,
+            "sg_lichting": f"L{self.user_information.student_graduation_year}",
+            "sg_fps": self.project_information.project_fps,
+            "sg_status": "Active",
+        }
+
+        created_project = self.shotgrid_connection.create(
+            "Project", project_data
+        )
+        project_id = created_project.get("id")
+
+        pipeline_configuration_data = {
+            "code": "Primary",
+            "descriptor": self.get_pipeline_configuration_string(
+                self.user_information.student_year
+            ),
+            "plugin_ids": "basic.*",
+            "project": {"id": project_id, "type": "Project"},
+            "sg_lichting": f"s{self.user_information.student_year}",
+        }
+        self.shotgrid_connection.create(
+            "PipelineConfiguration", pipeline_configuration_data
+        )
+
+        return f"https://nfa.shotgunstudio.com/page/project_overview?project_id={project_id}"
+
+
+class ShotGridConnectionThread(QtCore.QThread):
+    """Class for connecting to ShotGrid on a separate thread
+    so the UI doesn't freeze."""
+
+    shotgrid_connection_successful = QtCore.Signal(object)
+    shotgrid_connection_failed = QtCore.Signal(object)
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def run(self):
         try:
-            formatted_supervisors_list = self.get_formatted_supervisors_list(
-                self.project_information.supervisor_list
-            )
-
-            project_data = {
-                "name": self.project_information.project_name,
-                "tank_name": self.project_information.project_name,
-                "sg_projectcode": self.project_information.project_code,
-                "users": formatted_supervisors_list,
-                "sg_supervisors": formatted_supervisors_list,
-                "sg_render_engine": self.project_information.render_engine,
-                "sg_type": self.project_information.project_type,
-                "sg_lichting": f"L{self.user_information.student_graduation_year}",
-                "sg_fps": self.project_information.project_fps,
-                "sg_status": "Active",
-            }
-
-            created_project = self.shotgrid_connection.create(
-                "Project", project_data
-            )
-            project_id = created_project.get("id")
-
-            pipeline_configuration_data = {
-                "code": "Primary",
-                "descriptor": self.get_pipeline_configuration_string(
-                    self.user_information.student_year
-                ),
-                "plugin_ids": "basic.*",
-                "project": {"id": project_id, "type": "Project"},
-                "sg_lichting": f"s{self.user_information.student_year}",
-            }
-            self.shotgrid_connection.create(
-                "PipelineConfiguration", pipeline_configuration_data
-            )
-
-            return (
-                True,
-                f"https://nfa.shotgunstudio.com/page/project_overview?project_id={project_id}",
-            )
-
+            connection_information = self.model.create_shotgrid_connection()
+            self.shotgrid_connection_successful.emit(connection_information)
         except Exception as error:
-            return False, str(error)
+            self.shotgrid_connection_failed.emit(str(error))
+
+
+class ProjectCreationThread(QtCore.QThread):
+    """Class for creating the ShotGrid project on a separate thread
+    so the UI doesn't freeze."""
+
+    project_creation_successful = QtCore.Signal(object)
+    project_creation_failed = QtCore.Signal(object)
+
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def run(self):
+        try:
+            project_url = self.model.create_project()
+            self.project_creation_successful.emit(project_url)
+        except Exception as error:
+            self.project_creation_failed.emit(str(error))

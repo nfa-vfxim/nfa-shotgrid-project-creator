@@ -2,59 +2,53 @@
 
 from __future__ import annotations
 
-from PySide2 import QtCore
-
-from model import ProjectCreatorModel
+from model import ProjectCreatorModel, ValidationError
+from view import ProjectCreatorView
 
 
 class ProjectCreatorController:
     """Controller for the ShotGrid Project Creator.
 
     This controller handles all interactions between the view and the model.
-    It also creates the model.
+    """
 
-    Attributes:
-        view: The ProjectCreatorView class."""
+    def __init__(self):
+        """Initializes the controller class and creates the view and model."""
+        self.view = ProjectCreatorView()
+        self.view.show()
+        self.view.start_button.clicked.connect(self.connect_to_shotgrid)
 
-    def __init__(self, view):
-        """Initializes the controller class and creates the model."""
-        self.view = view
         self.model = ProjectCreatorModel()
 
     def connect_to_shotgrid(self) -> None:
-        """Starts the ShotGrid model connection on a seperate thread."""
+        """Starts the ShotGrid model connection."""
         self.view.start_widget.hide()
         self.view.layout.addWidget(self.view.get_loading_widget())
 
-        self.shotgrid_connection_thread = ShotGridConnectionThread(self.model)
-        self.shotgrid_connection_thread.connection_response_received.connect(
-            self.connection_response_received
+        self.model.connect_to_shotgrid(
+            self.shotgrid_connection_successful,
+            self.shotgrid_connection_failed,
         )
-        self.shotgrid_connection_thread.start()
 
-    def connection_response_received(
-        self, connection_information: tuple(bool, str)
-    ) -> None:
-        """Runs when the ShotGrid connection thread is finished.
-        Shows error if needed, else moves on to finding the username.
+    def shotgrid_connection_successful(self) -> None:
+        """Runs when model is connected to ShotGrid. Triggers the username search."""
+        self.find_username()
+
+    def shotgrid_connection_failed(self, error: str) -> None:
+        """Show an error message when the ShotGrid connection failed.
 
         Args:
-            connection_information: ShotGrid connection information
+            error: Python error message in string format.
         """
-        connected, error = connection_information
-
-        if connected:
-            self.find_username()
-        else:
-            self.view.loading_widget.hide()
-            self.view.layout.addWidget(self.view.get_error_widget())
-            self.view.error_text.setText(
-                f"Error: {error}. Please contact a pipeliner if problem persist."
-            )
+        self.view.loading_widget.hide()
+        self.view.layout.addWidget(self.view.get_error_widget())
+        self.view.error_text.setText(
+            f"ShotGrid connection error: {error}. Please contact a pipeline TD if problem persist."
+        )
 
     def find_username(self) -> None:
         """Checks the username with the model. If we can't find a ShotGrid username,
-        we show the username selection sceen to the user.
+        we show the username selection screen to the user.
         """
         self.view.loading_widget.hide()
 
@@ -67,14 +61,17 @@ class ProjectCreatorController:
                     shotgrid_user.get("name"), self.model.usernames
                 )
             )
+            self.connect_view_functions()
+
         else:
             self.view.layout.addWidget(
                 self.view.get_username_widget(self.model.usernames)
             )
+            self.view.continue_button.clicked.connect(self.validate_username)
 
     def validate_username(self) -> None:
         """Checks if user submitted username is in ShotGrid. Moves on to next
-        step if username is correct."""
+        step if username exists."""
         shotgrid_user = self.model.get_shotgrid_user(
             self.view.username_lineedit.text()
         )
@@ -95,17 +92,61 @@ class ProjectCreatorController:
                     shotgrid_user.get("name"), self.model.usernames
                 )
             )
+            self.connect_view_functions()
             self.model.set_user_information(shotgrid_user)
 
+    def connect_view_functions(self) -> None:
+        """Connects all our view buttons and text changes to corresponding
+        functions in this controller."""
+        self.view.project_name_lineedit.textChanged.connect(
+            self.validate_project_name
+        )
+        self.view.production_code_yes_button.clicked.connect(
+            self.set_production_code_yes
+        )
+        self.view.production_code_no_button.clicked.connect(
+            self.set_production_code_no
+        )
+        self.view.project_code_lineedit.textChanged.connect(
+            self.validate_project_code
+        )
+        self.view.supervisor_add_button.clicked.connect(self.add_supervisor)
+        self.view.supervisor_remove_button.clicked.connect(
+            self.remove_supervisor
+        )
+        self.view.render_engine_list.currentTextChanged.connect(
+            self.set_render_engine
+        )
+        self.view.project_type_fiction_button.clicked.connect(
+            self.set_project_type_fiction
+        )
+        self.view.project_type_documentary_button.clicked.connect(
+            self.set_project_type_documentary
+        )
+        self.view.fps_spinbox.valueChanged.connect(self.set_fps)
+        self.view.create_project_button.clicked.connect(self.create_project)
+
     def validate_project_name(self, project_name: str) -> None:
-        """Validates project name and updates view."""
-        validated, message = self.model.validate_project_name(project_name)
+        """Validates project name and updates view.
+
+        Args:
+            project_name: Name of project
+        """
         project_name_validation_text = self.view.project_name_validation_text
 
-        project_name_validation_text.setText(message)
-        project_name_validation_text.setStyleSheet(
-            f"color: {'#8BFF3E' if validated else '#FF3E3E'}; font-size: 12px;"
-        )
+        try:
+            self.model.validate_project_name(project_name)
+            project_name_validation_text.setText("Project name available!")
+            project_name_validation_text.setStyleSheet(
+                "color: '#8BFF3E'; font-size: 12px;"
+            )
+
+        except ValidationError as validation_message:
+            project_name_validation_text.setText(str(validation_message))
+            project_name_validation_text.setStyleSheet(
+                "color: '#FF3E3E'; font-size: 12px;"
+            )
+
         project_name_validation_text.show()
 
     def set_production_code_yes(self) -> None:
@@ -136,53 +177,79 @@ class ProjectCreatorController:
         Args:
             project_code: String project code, either P#### or ABC.
         """
-        validated, message = self.model.validate_project_code(project_code)
         production_code_validation_text = (
             self.view.production_code_validation_text
         )
 
-        production_code_validation_text.setText(message)
-        production_code_validation_text.setStyleSheet(
-            f"color: {'#8BFF3E' if validated else '#FF3E3E'}; font-size: 12px;"
-        )
+        try:
+            self.model.validate_project_code(project_code)
+            production_code_validation_text.setText("Project code available!")
+            production_code_validation_text.setStyleSheet(
+                "color: '#8BFF3E'; font-size: 12px;"
+            )
+
+        except ValidationError as validation_message:
+            production_code_validation_text.setText(str(validation_message))
+            production_code_validation_text.setStyleSheet(
+                "color: '#FF3E3E'; font-size: 12px;"
+            )
+
         production_code_validation_text.show()
 
     def add_supervisor(self) -> None:
         """Tries to add the supervisor from the LineEdit to the list of supervisors."""
-        validated, username, message = self.model.add_supervisor(
-            self.view.supervisors_lineedit.text()
-        )
         supervisors_validation_text = self.view.supervisors_validation_text
 
-        if validated:
+        try:
+            username = self.model.add_supervisor(
+                self.view.supervisors_lineedit.text()
+            )
+
+            supervisors_validation_text.setText("Added supervisor to list!")
+            supervisors_validation_text.setStyleSheet(
+                "color: '#8BFF3E'; font-size: 12px;"
+            )
+
             self.view.supervisors_list.insertItem(0, username)
             self.view.supervisors_list.setCurrentIndex(0)
             self.view.supervisors_lineedit.setText("")
 
-        supervisors_validation_text.setText(message)
-        supervisors_validation_text.setStyleSheet(
-            f"color: {'#8BFF3E' if validated else '#FF3E3E'}; font-size: 12px;"
-        )
+        except ValidationError as validation_message:
+            supervisors_validation_text.setText(str(validation_message))
+            supervisors_validation_text.setStyleSheet(
+                "color: '#FF3E3E'; font-size: 12px;"
+            )
+
         supervisors_validation_text.show()
 
     def remove_supervisor(self) -> None:
         """Tries to remove a supervisor from the list."""
-        removed, message = self.model.remove_supervisor(
-            self.view.supervisors_list.currentText()
-        )
         supervisors_validation_text = self.view.supervisors_validation_text
 
-        if removed:
+        try:
+            self.model.remove_supervisor(
+                self.view.supervisors_list.currentText()
+            )
+
             self.view.supervisors_list.removeItem(
                 self.view.supervisors_list.findText(
                     self.view.supervisors_list.currentText()
                 )
             )
 
-        supervisors_validation_text.setText(message)
-        supervisors_validation_text.setStyleSheet(
-            f"color: {'#8BFF3E' if removed else '#FF3E3E'}; font-size: 12px;"
-        )
+            supervisors_validation_text.setText(
+                "Removed supervisor from list!"
+            )
+            supervisors_validation_text.setStyleSheet(
+                "color: '#8BFF3E'; font-size: 12px;"
+            )
+
+        except ValidationError as validation_message:
+            supervisors_validation_text.setText(str(validation_message))
+            supervisors_validation_text.setStyleSheet(
+                "color: '#FF3E3E'; font-size: 12px;"
+            )
+
         supervisors_validation_text.show()
 
     def set_render_engine(self, render_engine: str) -> None:
@@ -202,15 +269,19 @@ class ProjectCreatorController:
         self.model.set_project_type("Documentary")
 
     def set_fps(self, fps: int) -> None:
-        """Informs the model of the new FPS."""
+        """Informs the model of the new FPS.
+
+        Args:
+            fps: New project FPS"""
         self.model.set_fps(fps)
 
     def create_project(self) -> None:
-        """Validates, then creates the project."""
-        validated, message = self.model.validate_project()
+        """Validates the project, then starts project creation on a separate thread."""
+        try:
+            self.model.validate_project()
 
-        if not validated:
-            self.view.project_validation_text.setText(message)
+        except ValidationError as validation_message:
+            self.view.project_validation_text.setText(str(validation_message))
             self.view.project_validation_text.setStyleSheet(
                 "color: '#FF3E3E'; font-size: 12px;"
             )
@@ -221,59 +292,30 @@ class ProjectCreatorController:
         self.view.loading_text.setText("Creating project...")
         self.view.loading_widget.show()
 
-        self.project_creation_thread = ProjectCreationThread(self.model)
-        self.project_creation_thread.project_creation_finished.connect(
-            self.project_creation_finished
+        self.model.start_project_creation(
+            self.project_creation_successful, self.project_creation_failed
         )
-        self.project_creation_thread.start()
 
-    def project_creation_finished(self, project_information: tuple) -> None:
-        """Runs when project creation is finished on the seperate thread.
+    def project_creation_successful(self, project_url: str) -> None:
+        """Runs when project creation has successfully finished.
 
         Args:
-            project_information: Whether or not creation was successful and error/link
+            project_url: Link to ShotGrid site for project.
         """
-        created, message = project_information
         self.view.loading_widget.hide()
 
-        if not created:
-            self.view.main_widget.hide()
-            self.view.layout.addWidget(self.view.get_error_widget())
-            self.view.error_text.setText(
-                f"Error: {message}. Please contact a pipeliner if problem persist."
-            )
-            return
-
         self.view.layout.addWidget(
-            self.view.get_project_creation_successful_widget(message)
+            self.view.get_project_creation_successful_widget(project_url)
         )
 
+    def project_creation_failed(self, error: str) -> None:
+        """Runs when project creation has failed.
 
-class ShotGridConnectionThread(QtCore.QThread):
-    """Class for connecting to ShotGrid on a seperate thread
-    so the UI doesn't freeze."""
-
-    connection_response_received = QtCore.Signal(object)
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def run(self):
-        connection_information = self.model.connect_to_shotgrid()
-        self.connection_response_received.emit(connection_information)
-
-
-class ProjectCreationThread(QtCore.QThread):
-    """Class for creating the ShotGrid project on a seperate thread
-    so the UI doesn't freeze."""
-
-    project_creation_finished = QtCore.Signal(object)
-
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def run(self):
-        created_project_information = self.model.create_project()
-        self.project_creation_finished.emit(created_project_information)
+        Args:
+            error: Python error message in string format.
+        """
+        self.view.loading_widget.hide()
+        self.view.layout.addWidget(self.view.get_error_widget())
+        self.view.error_text.setText(
+            f"Project creation error: {error}. Please contact a pipeline TD if problem persist."
+        )

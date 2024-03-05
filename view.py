@@ -1,25 +1,24 @@
 """View for the NFA ShotGrid Project Creator, written by Mervin van Brakel (2024)"""
 
+from __future__ import annotations
+
 from pathlib import Path
 
 from PySide2 import QtCore, QtGui, QtSvg, QtWidgets
 
-from controller import ProjectCreatorController
-
-SCRIPT_LOCATION = Path(__file__).parent
+SCRIPT_LOCATION: Path = Path(__file__).parent
 
 
 class ProjectCreatorView(QtWidgets.QWidget):
     """View for the ShotGrid Project Creator.
 
     This view has all functions related to the Qt UI.
-    It also creates the controller."""
+    """
 
     def __init__(self):
-        """Initializes the view class and creates the controller."""
+        """Initializes the view class."""
         super().__init__()
 
-        self.controller = ProjectCreatorController(self)
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -49,7 +48,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         This widget contains the section at the top with the logos.
 
         Returns:
-            QtWidgets.QWidget: Widget containing top section
+            Widget containing top section
         """
         top_widget = QtWidgets.QWidget()
         top_widget.setFixedHeight(80)
@@ -90,7 +89,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         This widgets contains all other widgets for the start menu.
 
         Returns:
-            QtWidgets.QWidget: Widget containing start widgets.
+            Widget containing start widgets.
         """
         self.start_widget = QtWidgets.QWidget()
         start_widget_layout = QtWidgets.QVBoxLayout()
@@ -116,20 +115,22 @@ class ProjectCreatorView(QtWidgets.QWidget):
         start_text_3.setWordWrap(True)
         start_widget_layout.addWidget(start_text_3)
 
-        start_button = QtWidgets.QPushButton("Start")
-        start_button.clicked.connect(self.controller.connect_to_shotgrid)
-        start_button.setMaximumWidth(500)
-        start_button.setStyleSheet("margin-bottom: 30px;")
-        start_widget_layout.addWidget(start_button, 0)
+        self.start_button = QtWidgets.QPushButton("Start")
+        self.start_button.setMaximumWidth(500)
+        self.start_button.setStyleSheet("margin-bottom: 30px;")
+        start_widget_layout.addWidget(self.start_button, 0)
 
         return self.start_widget
 
-    def get_username_widget(self, username_list: list) -> QtWidgets.QWidget:
+    def get_username_widget(self, usernames_list: list) -> QtWidgets.QWidget:
         """Gets the username widget for the layout.
         This widgets contains all other widgets for when we need user input for the username.
 
+        Args:
+            usernames_list: List of all ShotGrid usernames in database.
+
         Returns:
-            QtWidgets.QWidget: Widget containing username widgets.
+            Widget containing username widgets.
         """
         self.username_widget = QtWidgets.QWidget()
         username_widget_layout = QtWidgets.QVBoxLayout()
@@ -152,7 +153,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
 
         self.username_lineedit = QtWidgets.QLineEdit()
         self.username_lineedit.setMinimumWidth(300)
-        self.username_completer = QtWidgets.QCompleter(username_list)
+        self.username_completer = QtWidgets.QCompleter(usernames_list)
         self.username_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.username_lineedit.setCompleter(self.username_completer)
         username_widget_layout.addWidget(
@@ -165,11 +166,10 @@ class ProjectCreatorView(QtWidgets.QWidget):
             self.username_validation_text, 0, QtCore.Qt.AlignCenter
         )
 
-        continue_button = QtWidgets.QPushButton("Continue")
-        continue_button.setMinimumWidth(300)
-        continue_button.clicked.connect(self.controller.validate_username)
+        self.continue_button = QtWidgets.QPushButton("Continue")
+        self.continue_button.setMinimumWidth(300)
         username_widget_layout.addWidget(
-            continue_button, 0, QtCore.Qt.AlignCenter
+            self.continue_button, 0, QtCore.Qt.AlignCenter
         )
 
         return self.username_widget
@@ -179,7 +179,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         This widgets contains all other widgets for when loading.
 
         Returns:
-            QtWidgets.QWidget: Widget containing loading widgets.
+            Widget containing loading widgets.
         """
         self.loading_widget = QtWidgets.QWidget()
         loading_widget_layout = QtWidgets.QVBoxLayout()
@@ -207,7 +207,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         This widgets contains all other widgets for when an error occurs.
 
         Returns:
-            QtWidgets.QWidget: Widgets containing error widgets.
+            Widgets containing error widgets.
         """
         self.error_widget = QtWidgets.QWidget()
         error_widget_layout = QtWidgets.QVBoxLayout()
@@ -231,13 +231,17 @@ class ProjectCreatorView(QtWidgets.QWidget):
         return self.error_widget
 
     def get_main_widget(
-        self, username: str, usernames_list: list
+        self, username: str, usernames_list: list[str]
     ) -> QtWidgets.QWidget:
         """Gets the main widget of the layout.
         This widgets contains all other widgets for user input.
 
+        Args:
+            username: Name of the user running the program.
+            usernames_list: List of all ShotGrid usernames in database.
+
         Returns:
-            QtWidgets.QWidget: Widget containing the main widgets.
+            Widget containing the main widgets.
         """
         self.main_widget = QtWidgets.QWidget()
         main_widget_layout = QtWidgets.QVBoxLayout()
@@ -260,8 +264,11 @@ class ProjectCreatorView(QtWidgets.QWidget):
     def get_welcome_widget(self, username: str) -> QtWidgets.QLabel:
         """Gets the welcome section widget for our main layout.
 
+        Args:
+            username: Name of the user running the program.
+
         Returns:
-            QtWidgets.QLabel: Widget containing welcome text
+            Widget containing welcome text
         """
         welcome_text = f"""Welcome, {username}! Fill out the following form and press
     the create button to create your new ShotGrid project."""
@@ -274,7 +281,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         """Gets the project name widget for the main layout."
 
         Returns:
-            QtWidgets.QWidget: Widget containing project name widgets.
+            Widget containing project name widgets.
         """
         project_name_widget = QtWidgets.QWidget()
         project_name_widget_layout = QtWidgets.QVBoxLayout()
@@ -283,11 +290,8 @@ class ProjectCreatorView(QtWidgets.QWidget):
         project_name_text = QtWidgets.QLabel("What is your project name?")
         project_name_widget_layout.addWidget(project_name_text)
 
-        project_name_lineedit = QtWidgets.QLineEdit("")
-        project_name_lineedit.textChanged.connect(
-            self.controller.validate_project_name
-        )
-        project_name_widget_layout.addWidget(project_name_lineedit)
+        self.project_name_lineedit = QtWidgets.QLineEdit("")
+        project_name_widget_layout.addWidget(self.project_name_lineedit)
 
         self.project_name_validation_text = QtWidgets.QLabel("")
         self.project_name_validation_text.hide()
@@ -299,7 +303,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         """Gets the production code widget for the main layout.
 
         Returns:
-            QtWidgets.QWidget: Widget containing production code widgets.
+            Widget containing production code widgets.
         """
         production_code_widget = QtWidgets.QWidget()
         production_code_widget_layout = QtWidgets.QVBoxLayout()
@@ -318,18 +322,12 @@ class ProjectCreatorView(QtWidgets.QWidget):
         self.production_code_yes_button = QtWidgets.QPushButton("Yes")
         self.production_code_yes_button.setCheckable(True)
         self.production_code_yes_button.setChecked(True)
-        self.production_code_yes_button.clicked.connect(
-            self.controller.set_production_code_yes
-        )
         horizontal_button_box_layout.addWidget(
             self.production_code_yes_button, 0, QtCore.Qt.AlignLeft
         )
 
         self.production_code_no_button = QtWidgets.QPushButton("No")
         self.production_code_no_button.setCheckable(True)
-        self.production_code_no_button.clicked.connect(
-            self.controller.set_production_code_no
-        )
         horizontal_button_box_layout.addWidget(
             self.production_code_no_button, 0, QtCore.Qt.AlignLeft
         )
@@ -345,9 +343,6 @@ class ProjectCreatorView(QtWidgets.QWidget):
         )
 
         self.project_code_lineedit = QtWidgets.QLineEdit("")
-        self.project_code_lineedit.textChanged.connect(
-            self.controller.validate_project_code
-        )
         production_code_widget_layout.addWidget(self.project_code_lineedit)
 
         self.production_code_validation_text = QtWidgets.QLabel("")
@@ -359,12 +354,15 @@ class ProjectCreatorView(QtWidgets.QWidget):
         return production_code_widget
 
     def get_supervisors_widget(
-        self, usernames_list: list
+        self, usernames_list: list[str]
     ) -> QtWidgets.QWidget:
         """Gets the supervisors widget for the main layout.
 
+        Args:
+            usernames_list: List of all ShotGrid usernames in database.
+
         Returns:
-            QtWidgets.QWidget: Widget containing supervisors widgets.
+            Widget containing supervisors widgets.
         """
 
         supervisors_widget = QtWidgets.QWidget()
@@ -387,9 +385,8 @@ class ProjectCreatorView(QtWidgets.QWidget):
         self.supervisor_completer.setCaseSensitivity(QtCore.Qt.CaseInsensitive)
         self.supervisors_lineedit.setCompleter(self.supervisor_completer)
 
-        supervisor_add_button = QtWidgets.QPushButton("+")
-        supervisor_add_button.clicked.connect(self.controller.add_supervisor)
-        supervisors_adding_widget_layout.addWidget(supervisor_add_button)
+        self.supervisor_add_button = QtWidgets.QPushButton("+")
+        supervisors_adding_widget_layout.addWidget(self.supervisor_add_button)
 
         supervisors_widget_layout.addWidget(supervisors_adding_widget)
 
@@ -405,11 +402,8 @@ class ProjectCreatorView(QtWidgets.QWidget):
         self.supervisors_list = QtWidgets.QComboBox()
         supervisor_list_layout.addWidget(self.supervisors_list, 1)
 
-        supervisor_remove_button = QtWidgets.QPushButton("-")
-        supervisor_remove_button.clicked.connect(
-            self.controller.remove_supervisor
-        )
-        supervisor_list_layout.addWidget(supervisor_remove_button, 0)
+        self.supervisor_remove_button = QtWidgets.QPushButton("-")
+        supervisor_list_layout.addWidget(self.supervisor_remove_button, 0)
 
         supervisors_widget_layout.addWidget(supervisor_list_widget)
 
@@ -419,7 +413,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         """Gets the render engine widget for the main layout.
 
         Returns:
-            QtWidgets.QWidget: Widget containing render engine widgets.
+            Widget containing render engine widgets.
         """
         render_engine_widget = QtWidgets.QWidget()
         render_engine_widget_layout = QtWidgets.QVBoxLayout()
@@ -429,24 +423,21 @@ class ProjectCreatorView(QtWidgets.QWidget):
             QtWidgets.QLabel("What render engine are you using?")
         )
 
-        render_engine_list = QtWidgets.QComboBox()
-        render_engine_list.currentTextChanged.connect(
-            self.controller.set_render_engine
-        )
-        render_engine_list.setMaximumWidth(100)
-        render_engine_list.addItem("All")
-        render_engine_list.addItem("Arnold")
-        render_engine_list.addItem("Karma")
-        render_engine_list.addItem("RenderMan")
+        self.render_engine_list = QtWidgets.QComboBox()
+        self.render_engine_list.setMaximumWidth(100)
+        self.render_engine_list.addItem("All")
+        self.render_engine_list.addItem("Arnold")
+        self.render_engine_list.addItem("Karma")
+        self.render_engine_list.addItem("RenderMan")
 
-        render_engine_widget_layout.addWidget(render_engine_list)
+        render_engine_widget_layout.addWidget(self.render_engine_list)
         return render_engine_widget
 
     def get_project_type_widget(self) -> QtWidgets.QWidget:
         """Gets the project type widget for the main layout.
 
         Returns:
-            QtWidgets.QWidget: Widget containing project type widgets.
+            Widget containing project type widgets.
         """
         project_type_widget = QtWidgets.QWidget()
         project_type_widget_layout = QtWidgets.QVBoxLayout()
@@ -462,9 +453,6 @@ class ProjectCreatorView(QtWidgets.QWidget):
         horizontal_button_box_widget.setLayout(horizontal_button_box_layout)
 
         self.project_type_fiction_button = QtWidgets.QPushButton("Fiction")
-        self.project_type_fiction_button.clicked.connect(
-            self.controller.set_project_type_fiction
-        )
         self.project_type_fiction_button.setCheckable(True)
         self.project_type_fiction_button.setChecked(True)
         horizontal_button_box_layout.addWidget(
@@ -473,9 +461,6 @@ class ProjectCreatorView(QtWidgets.QWidget):
 
         self.project_type_documentary_button = QtWidgets.QPushButton(
             "Documentary"
-        )
-        self.project_type_documentary_button.clicked.connect(
-            self.controller.set_project_type_documentary
         )
         self.project_type_documentary_button.setCheckable(True)
         horizontal_button_box_layout.addWidget(
@@ -491,7 +476,7 @@ class ProjectCreatorView(QtWidgets.QWidget):
         """Gets the fps widget for the main layout.
 
         Returns:
-            QtWidgets.QWidget: Widget containing fps widgets.
+            Widget containing fps widgets.
         """
         fps_widget = QtWidgets.QWidget()
         fps_widget_layout = QtWidgets.QVBoxLayout()
@@ -501,12 +486,11 @@ class ProjectCreatorView(QtWidgets.QWidget):
             QtWidgets.QLabel("What is the FPS for the project?")
         )
 
-        fps_spinbox = QtWidgets.QSpinBox()
-        fps_spinbox.valueChanged.connect(self.controller.set_fps)
-        fps_spinbox.setMaximumWidth(60)
-        fps_spinbox.setValue(25)
-        fps_spinbox.setRange(1, 120)
-        fps_widget_layout.addWidget(fps_spinbox)
+        self.fps_spinbox = QtWidgets.QSpinBox()
+        self.fps_spinbox.setMaximumWidth(60)
+        self.fps_spinbox.setValue(25)
+        self.fps_spinbox.setRange(1, 120)
+        fps_widget_layout.addWidget(self.fps_spinbox)
 
         return fps_widget
 
@@ -514,18 +498,17 @@ class ProjectCreatorView(QtWidgets.QWidget):
         """Gets the create project widget for the main layout.
 
         Returns:
-            QtWidgets.QWidget: Widget with create project button
+            Widget with create project button.
         """
         create_project_widget = QtWidgets.QWidget()
         create_project_widget_layout = QtWidgets.QVBoxLayout()
         create_project_widget_layout.setAlignment(QtCore.Qt.AlignHCenter)
         create_project_widget.setLayout(create_project_widget_layout)
 
-        create_project_button = QtWidgets.QPushButton("Create project")
-        create_project_button.clicked.connect(self.controller.create_project)
-        create_project_button.setMaximumWidth(150)
+        self.create_project_button = QtWidgets.QPushButton("Create project")
+        self.create_project_button.setMaximumWidth(150)
         create_project_widget_layout.addWidget(
-            create_project_button, 0, QtCore.Qt.AlignHCenter
+            self.create_project_button, 0, QtCore.Qt.AlignHCenter
         )
 
         self.project_validation_text = QtWidgets.QLabel("")
@@ -539,13 +522,13 @@ class ProjectCreatorView(QtWidgets.QWidget):
     def get_project_creation_successful_widget(
         self, project_link: str
     ) -> QtWidgets.QWidget:
-        """_summary_
+        """Gets the final widget that displays the project creation was successful.
 
         Args:
-            project_link (str): _description_
+            project_link: URL to project.
 
         Returns:
-            QtWidgets.QWidget: _description_
+            Widget with success text.
         """
         successful_widget = QtWidgets.QWidget()
         successful_widget_layout = QtWidgets.QVBoxLayout()

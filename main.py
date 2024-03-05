@@ -4,12 +4,11 @@ import sys
 
 from PySide2 import QtWidgets
 
-from view import ProjectCreatorView
+from controller import ProjectCreatorController
 
 if __name__ == "__main__":
     app = QtWidgets.QApplication(sys.argv)
 
-    widget = ProjectCreatorView()
-    widget.show()
+    controller = ProjectCreatorController()
 
     sys.exit(app.exec_())
